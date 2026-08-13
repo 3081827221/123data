@@ -1,0 +1,265 @@
+#导入所需库
+from datetime import datetime
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+#防止中文乱码
+plt.rcParams['axes.unicode_minus'] = False
+#导入数据集
+#因此改用Downloads下的原始CSV，并把user_id按字符串读取保留其唯一性
+df=pd.read_csv("C:/Users/30818/Downloads/电子产品销售分析.csv",dtype={'user_id':str})
+#去掉pandas导出时多余的索引列
+df=df.drop(columns=[c for c in df.columns if c.startswith('Unnamed')])
+#防止省略行列且防止断开
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', None)
+pd.set_option('display.width', None)
+#查看前五行数据
+df.head()
+#描述数据集各项统计量
+df.describe()
+#把数据集df"event_time"列截取前十九位，去掉冗余utc，转为datetime格式
+df['event_time'] = pd.to_datetime(df['event_time'].str[:19],format="%Y-%m-%d %H:%M:%S")
+#拆解时间为月份，日期，星期和小时，方便后续分析
+df['Month']=df['event_time'].dt.month
+df['Day'] = df['event_time'].dt.day
+df['Dayofweek']=df['event_time'].dt.dayofweek
+df['hour']=df['event_time'].dt.hour
+#查看数据集缺失值个数
+print(np.sum(df.isnull()))
+#填充缺失值为"missing"（fillna不会原地修改，需要重新赋值）
+df = df.fillna('missing')
+df.head(10)
+#定义封装商店绘图函数，方便后续绘图
+plt.rcParams['font.sans-serif']=['SimHei']
+plt.rcParams['axes.unicode_minus']=False
+def store_plot(data,xlab,ylab,title):
+    plt.figure(figsize=(10,5))
+    plt.plot(data)
+    plt.xlabel(xlab)
+    plt.ylabel(ylab)
+    plt.title(title)
+#每月成交金额折线图
+store_plot(data=df[df['price']>0].groupby('Month')['price'].sum(),
+          xlab='月份',
+          ylab='成交金额',
+          title='每月成交金额')
+plt.show()
+#每月销售金额折线图
+store_plot(data=df.groupby('Month')['price'].sum(),
+          xlab = '月份',
+          ylab = '销售金额',
+          title = '每月销售金额')
+plt.show()
+#每月消费人数折线图
+store_plot(data=df[df['price']>0].groupby('Month')['user_id'].nunique(),
+          xlab='月份',
+          ylab='消费人数',
+          title='每月消费人数')
+plt.show()
+#每月订单数量折线图
+store_plot(data=df[df['price']>0].groupby('Month')['order_id'].nunique(),
+          xlab='月份',
+          ylab='订单数量',
+          title='每月订单数量')
+plt.show()
+#每月客单量
+store_plot(data=df[df['price']>0].groupby('Month')['price'].sum()/df[df['price']>0].groupby('Month')['order_id'].nunique(),
+          xlab='月份',
+          ylab='客单价',
+          title='每月客单价')
+plt.show()
+#绘制不同省份用户折线统计图
+plt.rcParams['font.sans-serif']=['KaiTi']
+plt.rcParams['axes.unicode_minus']=False
+plt.figure(figsize=(12,8))
+df[df['price']>0].groupby('local')['user_id'].nunique().sort_values(ascending=True).plot.barh()
+plt.xlabel('用户数量')
+plt.ylabel('省份')
+plt.title('不同省份用户数量')
+plt.show()
+#不同省份订单数量折线统计图
+plt.figure(figsize=(12,8))
+df[df['price']>0].groupby('local')['order_id'].nunique().sort_values(ascending=True).plot.barh()
+plt.xlabel('订单数量')
+plt.ylabel('省份')
+plt.title('不同省份订单数量')
+plt.show()
+#不同省份成交金额折线统计图
+plt.figure(figsize=(12,8))
+df[df['price']>0].groupby('local')['price'].sum().sort_values(ascending=True).plot.barh()
+plt.xlabel('成交金额')
+plt.ylabel('省份')
+plt.title('不同省份成交金额')
+plt.show()
+#下单时间分布(星期)折线统计图
+plt.figure(figsize=(12,8))
+df[df['price']>0].groupby('Dayofweek')['order_id'].nunique().plot.bar()
+plt.xticks(range(7),['周一','周二','周三','周四','周五','周六','周日'],rotation=0)
+plt.xlabel('星期')
+plt.ylabel('订单数')
+plt.title('订单数随星期变化')
+plt.show()
+#下单小时分布折线统计图
+plt.figure(figsize=(12,8))
+df[df['price']>0].groupby('hour')['order_id'].nunique().plot()
+plt.xlabel('小时')
+plt.ylabel('订单数')
+plt.title('订单随小时数变化')
+plt.show()
+#统计未完成的订单数量
+print(df[df['price']==0].count())
+#统计用户消费次数和消费金额
+print(df[df['price']>0].groupby('user_id').agg({'order_id':'nunique','price':'sum'}).describe())
+#统计消费次数与消费金额的关系散点图
+#说明：改用Downloads下的完整CSV后，user_id恢复为93818个真实用户，
+#按用户分组可得到正常的散点分布（加alpha避免点重叠）。
+df_valid = df[df['price']>0]
+plt.figure(figsize=(12,8))
+plt.scatter(x=df_valid.groupby('user_id')['order_id'].nunique(),
+           y=df_valid.groupby('user_id')['price'].sum(),
+           alpha=0.3)
+plt.xlabel('消费次数')
+plt.ylabel('消费金额')
+plt.title('消费次数与消费金额关系(按用户)')
+plt.show()
+
+#补充：按商品维度统计购买次数与消费金额，可观察到多个散点分布
+plt.figure(figsize=(12,8))
+plt.scatter(x=df_valid.groupby('product_id')['order_id'].nunique(),
+           y=df_valid.groupby('product_id')['price'].sum(),
+           alpha=0.6)
+plt.xlabel('购买次数')
+plt.ylabel('消费金额')
+plt.title('商品购买次数与消费金额关系')
+plt.show()
+#统计用户复购间隔天数
+purchase_time=(df[df['price']>0].groupby('user_id')['event_time']
+               .apply(lambda x: x-x.shift()).dt.days)
+print(purchase_time[purchase_time>0].describe())
+#统计新老用户，回流用户，不活跃用户和回流率
+pivoted_amount =df[df['price']>0].pivot_table(index='user_id',
+                                             columns='Month',
+                                             values='price',
+                                             aggfunc='mean').fillna(0)
+columns_month = df['Month'].sort_values().astype(str).unique()
+pivoted_amount.columns = columns_month
+pivoted_purchase = pivoted_amount.map(lambda x:1 if x>0 else 0)
+#用户分层
+def active_status(data):
+    status =[]
+    for i in range(len(data)):  # 用len(data)而非写死11，与实际月份数保持一致
+        #若本月没有消费
+        if data.iloc[i] == 0:  # 按位置取值（data[i]是按标签取，会导致KeyError）
+            if len(status)>0:
+                if status[i-1]=='unreg':
+                    status.append('unreg')
+                else:
+                    status.append('unactive')
+            else:
+                status.append('unreg')
+        #若本月消费
+        else:
+            if len(status)==0:
+                status.append('new')
+            else:
+                if status[i-1]=='unactive':
+                    status.append('return')
+                elif status[i-1]=='unreg':
+                    status.append('new')
+                else:
+                    status.append('active')
+    return pd.Series(status,index=columns_month)
+pivoted_purchase_status = pivoted_purchase.apply(lambda x:active_status(x),axis=1)
+purchase_status_counts= pivoted_purchase_status.replace('unreg',np.nan).apply(lambda x:x.value_counts())
+purchase_status_counts.fillna(0).T.plot.area(figsize=(12,6))
+plt.xticks(range(len(columns_month)),columns_month)  # 刻度数要与实际月份数一致
+plt.title('用户分层')
+plt.show()
+#回流率（每月回流用户数 / 当月有消费的用户数）
+#说明：原写法 return_rate.loc['return'] 是按行标签取，但本数据集只有1个用户且从未处于'return'状态，
+#因此 purchase_status_counts 行索引中没有'return'，会报 KeyError: 'return'。
+#正确做法是按列（月份）统计每月回流用户占比。
+return_rate = pivoted_purchase_status.replace('unreg',np.nan).apply(lambda col:(col=='return').sum()/col.notna().sum())
+return_rate.fillna(0).plot(figsize=(12,6))
+plt.xticks(range(len(columns_month)),columns_month)
+plt.title('回流率')
+plt.show()
+#复购率
+#说明：改用Downloads下的完整CSV后，用户维度可用：某用户当月被>=2个订单购买记为复购。
+pivoted_counts = df[df['price']>0].pivot_table(index='user_id',
+                                              columns='Month',
+                                             values='order_id',
+                                             aggfunc='nunique').fillna(0)
+pivoted_counts.columns = columns_month
+pivoted_counts_transf = pivoted_counts.map(lambda x: 1 if x>1 else np.nan if x==0 else 0)
+(pivoted_counts_transf.sum()/pivoted_counts_transf.count()).plot(figsize=(12,6))
+plt.xticks(range(len(columns_month)),columns_month)
+plt.title('复购率(用户维度)')
+plt.show()
+#回购率
+#说明：同复购率，改用用户维度：某用户本月有消费且下月仍有消费记为回购。
+def purchase_return(data):
+    status = []
+    for i in range(len(data)-1):
+        if data.iloc[i]==1:
+            if data.iloc[i+1]==1:
+                status.append(1)
+            else:
+                status.append(0)
+        else :
+            status.append(np.nan)
+    status.append(np.nan)
+    return pd.Series(status,index=columns_month)
+pivoted_purchase_user = df[df['price']>0].pivot_table(index='user_id',
+                                                      columns='Month',
+                                                      values='price',
+                                                      aggfunc='mean').fillna(0)
+pivoted_purchase_user.columns = columns_month
+pivoted_purchase_user = pivoted_purchase_user.map(lambda x: 1 if x>0 else 0)
+pivoted_purchase_return = pivoted_purchase_user.apply(purchase_return,axis=1)
+(pivoted_purchase_return.sum()/pivoted_purchase_return.count()).plot(figsize=(12,6))
+plt.xticks(range(len(columns_month)),columns_month)
+plt.title('回购率(用户维度)')
+plt.show()
+#消费人群分析（按性别）
+df_sex = df['sex'].value_counts()
+df = df[df['price']>0]
+plt.figure(figsize=(8,8))
+plt.pie(df_sex.values,labels=df_sex.index,autopct='%.2f%%',
+       wedgeprops={'linewidth':0.5,'edgecolor':'green'},
+       textprops={'fontsize':30,'color':'#003371'}
+       )
+plt.title('男女占比',size=30)
+plt.show()
+#消费人群分析（按年龄）
+df['age'].describe()
+bins=[10,20,30,40,50]
+df['age_box'] = pd.cut(df['age'],bins,labels=['10-20','20-30','30-40','40-50'])
+age_box = df['age_box'].value_counts()
+print(age_box)
+plt.figure(figsize=(10,6))
+plt.bar(age_box.index,age_box.values
+       ,color='#cb3a56')
+plt.ylabel('购买数量',size=22)
+plt.xlabel('年龄分段',size=22)
+plt.xticks(size=18)
+plt.yticks(size=18)
+for x,y in zip(age_box.index,age_box.values):
+    plt.text(x,y+500,"%d"%y,ha='center',va='bottom',size=16,color='#c83c23')
+plt.title('不同年龄分段的购买情况',size=25)
+plt.show()
+#进行购买人群分析
+df.groupby('age_box')['sex'].value_counts()
+#按偏好品牌分析
+df_brand = df['brand'].value_counts().head(12)
+plt.figure(figsize=(16,6))
+plt.bar(df_brand.index,df_brand.values,color='#c83c23')
+plt.xticks(size=16)
+plt.yticks(size=16)
+plt.xlabel("品牌名称",size=18)
+plt.ylabel("购买数量",size=18)
+plt.title('品牌名称与购买数量的情况',size=28,pad=20)
+plt.show()
